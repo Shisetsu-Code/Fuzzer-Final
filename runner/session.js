@@ -71,7 +71,7 @@ export class GameSession{
    const s=await this.inspectGame(this.page),cs=s.controls||[];
    const stage=s.state+'/'+s.phase;
    const revision=this.recorder.gameplayRevision?.(this.recorder.actionId)||0;
-   progress.update({stage,revision});
+   progress.update({stage,revision,roundSignature:s.roundSignature});
    if(this.page&&(Date.now()-lastPublished>10000||(publishedStage&&stage!==publishedStage))){const observation=await this.snapshot('running','executing '+stage);progress.update({imageHash:observation.imageSha256});lastPublished=Date.now();console.log(JSON.stringify({event:'phase',game:this.game.id,state:s.state,phase:s.phase,elapsedMs:Date.now()-started}));}
    if(progress.stalled())return {kind:'vision',reason:'no-round-progress',continuations};
    publishedStage=stage;

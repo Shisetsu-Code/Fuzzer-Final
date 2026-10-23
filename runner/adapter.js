@@ -40,7 +40,7 @@ export async function inspect(page){
   const foreground=data.state==='INTRO'?data.candidates.filter(c=>/IntroScreen/.test(c.path)):data.candidates;
   const controls=foreground.map(c=>{const r=c.rect;return {...c,id:controlId(c),category:category(c),x:(box.x+(r.x+r.w/2)*box.width)/1280,y:(box.y+(r.y+r.h/2)*box.height)/720,frameRect:box,viewport:{width:1280,height:720}};}).filter(c=>c.x>=0&&c.x<=1&&c.y>=0&&c.y<=1);
   const score=(data.adapter==='pragmatic-runtime'?10000:0)+controls.length+box.width*box.height/10000;
-  if(!best||score>best.score)best={score,state:data.state,phase:data.roundPhase,controls,frameUrl:frame.url(),frameRect:box};
+  if(!best||score>best.score)best={score,state:data.state,phase:data.roundPhase,roundSignature:data.progressSignature,controls,frameUrl:frame.url(),frameRect:box};
  }
  return best||{state:'UNKNOWN',phase:'unknown',controls:[],frameRect:null};
 }

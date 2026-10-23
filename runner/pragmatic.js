@@ -55,11 +55,15 @@ export function inspectPragmatic(){
   const finalBanner=items.some(c=>/\/FreeSpins\/Banner\//i.test(c.path)&&/\/ButtonContinue$/i.test(c.path)&&/you have won|total win/i.test(c.label));
   // A bonus may hide every button while still animating. Read its visible
   // counter rather than treating the absence of buttons as a finished screen.
-  let remaining=null;
+  let remaining=null;const progressLabels=[];
   const labelType=globalThis.UILabel;
   if(labelType)for(const root of roots)for(const widget of safe(()=>root.GetComponentsInChildren(labelType,true))||[]){
     if(widget.gameObject?.activeInHierarchy!==true||typeof widget.text!=='string')continue;
     const name=String(widget.gameObject.name||'');
+    const ancestry=[];for(let t=widget.gameObject.transform,n=0;t&&n<16;t=t.parent,n++)ancestry.unshift(String(t.gameObject?.name||''));
+    const widgetPath=ancestry.join('/')||name;
+    const progressText=widget.text.replace(/<[^>]*>|\[[^\]]*\]/g,'').trim();
+    if(/free.?spins?|big.?win|total.?win|win.?amount|tumble.?win|win.?counter|count.?up|remaining/i.test(widgetPath)&&!/(?:slogan|paytable|help|buyfeature|betlevel)/i.test(widgetPath)&&/\d/.test(progressText))progressLabels.push(widgetPath+':'+progressText.slice(0,160));
     if(/(?:free.?spins?|fs).*(?:remaining|left|counter)|(?:remaining|left).*free.?spin/i.test(name)){
       const value=widget.text.replace(/<[^>]*>|\[[^\]]*\]/g,'').trim();
       if(/^\d{1,3}$/.test(value))remaining=Number(value);
@@ -83,6 +87,6 @@ export function inspectPragmatic(){
   }
   if(state==='BASE'&&items.some(c=>/^stop$/i.test(c.label.trim())||/\/StopSpin_Button(?:\/|$)/i.test(c.path)))roundPhase='spinning';
   const foreground=state==='CONFIRM'?items.filter(c=>/ConfirmPurchaseWindow|FSPurchaseWindow|BuyWindow\/Content|ConfirmWindow\/Buttons/i.test(c.path)):items;
-  return {supported:true,adapter:'pragmatic-runtime',adapterVersion:'3',state,roundPhase,candidates:foreground.slice(0,250),opaqueCanvas:true};
+  return {supported:true,adapter:'pragmatic-runtime',adapterVersion:'4',state,roundPhase,progressSignature:JSON.stringify(progressLabels.sort()),candidates:foreground.slice(0,250),opaqueCanvas:true};
 }
 
