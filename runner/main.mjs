@@ -13,7 +13,7 @@ while(Date.now()-started<45*60000){
  const heartbeat=setInterval(async()=>{if(heartbeatBusy)return;heartbeatBusy=true;try{await cloud.post('/runner/heartbeat',{jobId:job.id,runnerId});}catch(e){heartbeatError=e;}finally{heartbeatBusy=false;}},10000);
  const results=[];
  try{
-  for(const game of job.spec.games){if(heartbeatError)throw heartbeatError;try{const session=new GameSession({browser,cloud,job,runnerId,game});results.push(await session.run());}catch(e){results.push({gameId:game.id,status:'error',error:e.message});console.error(JSON.stringify({event:'game_error',game:game.id,message:e.message}));}}
+  for(const game of job.spec.games){if(heartbeatError)throw heartbeatError;try{const session=new GameSession({browser,cloud,job,runnerId,game});const result=await session.run();results.push(result);if(result.status==='stopped')break;}catch(e){results.push({gameId:game.id,status:'error',error:e.message});console.error(JSON.stringify({event:'game_error',game:game.id,message:e.message}));}}
   await cloud.post('/runner/finish',{jobId:job.id,runnerId,result:results,...(results.some(r=>r.status!=='completed')?{error:'one or more games incomplete'}:{})});
  }finally{clearInterval(heartbeat);}
 }

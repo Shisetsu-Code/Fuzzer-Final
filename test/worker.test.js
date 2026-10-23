@@ -18,6 +18,7 @@ test('MCP jobs survive requests; one owner and stale observations cannot issue c
   const start=await req('/mcp',{jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'run_games',arguments:{games:[{id:'olympus',url:'https://www.pragmaticplay.com/en/games/gates-of-olympus/'}]}}});
   const job=JSON.parse(start.body.result.content[0].text);assert.ok(job.id);
   const claim=await req('/runner/claim',{runnerId:'r1'},'runner');assert.equal(claim.body.job.id,job.id);
+  assert.equal((await req('/runner/claim',{runnerId:'r1'},'runner')).body.job.id,job.id);
   assert.equal((await req('/runner/claim',{runnerId:'r2'},'runner')).body.job,null);
   assert.equal((await req('/runner/heartbeat',{jobId:job.id,runnerId:'r2'},'runner')).status,409);
   const observation={id:'obs1',gameId:'olympus',status:'needs_input',controls:[],imageKey:'image.jpg'};
@@ -29,5 +30,23 @@ test('MCP jobs survive requests; one owner and stale observations cannot issue c
   assert.equal(JSON.parse((await call(click)).body.result.content[0].text).duplicate,true);
   const c=await req('/runner/command',{jobId:job.id,runnerId:'r1'},'runner');assert.equal(c.body.command.commandId,'click1');
   assert.equal((await req('/runner/command',{jobId:job.id,runnerId:'r1'},'runner')).body.command,null);
+  const bucket=await mf.getR2Bucket('EVIDENCE');
+  await bucket.put(job.id+'/traces/action1.json',JSON.stringify({events:[{transport:'http',url:'https://demo.example/spin',request:{body:'action=doSpin'}}]}));
+  const evidence=await req('/runner/action',{jobId:job.id,runnerId:'r1',action:{id:'action1',gameId:'olympus',category:'spin',label:'Spin',x:.5,y:.5,sequence:1},endpoints:[{transport:'http',method:'POST',endpoint:'https://demo.example/spin',count:1}],controls:[{id:'spin',x:.5,y:.5}]},'runner');
+  assert.equal(evidence.status,200);
+  const exported=await req('/mcp',{jsonrpc:'2.0',id:4,method:'tools/call',params:{name:'export_game',arguments:{jobId:job.id,gameId:'olympus'}}});
+  const data=JSON.parse(exported.body.result.content[0].text);assert.equal(data.actions[0].label,'Spin');assert.equal(data.endpoints[0].endpoint,'https://demo.example/spin');assert.equal(data.coordinates[0].x,.5);
+  const register=await mf.dispatchFetch('https://worker.test/register',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({redirect_uris:['https://chatgpt.com/connector_platform/oauth_redirect']})});
+  assert.equal(register.status,201);
+  const client=await register.json();
+  const {pkceChallenge}=await import('../src/oauth.js');
+  const verifier='dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
+  const authForm=new URLSearchParams({client_id:client.client_id,redirect_uri:client.redirect_uris[0],response_type:'code',code_challenge_method:'S256',code_challenge:await pkceChallenge(verifier),access_key:'client',state:'test'});
+  const consent=await mf.dispatchFetch('https://worker.test/authorize',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:authForm.toString(),redirect:'manual'});
+  assert.equal(consent.status,302);const code=new URL(consent.headers.get('location')).searchParams.get('code');assert.ok(code);
+  const tokenBody=new URLSearchParams({grant_type:'authorization_code',client_id:client.client_id,redirect_uri:client.redirect_uris[0],code,code_verifier:verifier});
+  const getToken=()=>mf.dispatchFetch('https://worker.test/token',{method:'POST',body:tokenBody.toString()});
+  const tokens=await (await getToken()).json();assert.ok(tokens.access_token);assert.equal((await getToken()).status,400);
+  assert.equal((await req('/mcp',{jsonrpc:'2.0',id:1,method:'tools/list'},tokens.access_token)).status,200);
  }finally{await mf.dispose();}
 });

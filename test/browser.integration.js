@@ -23,7 +23,7 @@ test('real browser records HTTP bodies and binary WS frames correlated to a coor
   recorder.actionId='spin-1';await page.mouse.click(spin.x*1280,spin.y*720);
   await page.waitForFunction(()=>document.body.dataset.done==='yes');await page.waitForTimeout(150);
   const trace=await recorder.snapshot('spin-1');
-  const event=trace.events.find(e=>e.transport==='http'&&e.method==='POST');assert.ok(event);
+  const event=trace.events.find(e=>e.transport==='http'&&e.method==='POST'&&e.stage==='response');assert.ok(event);
   assert.equal(JSON.parse(Buffer.from(event.request.body.data,'base64').toString()).action,'doSpin');
   assert.equal(JSON.parse(event.response.body.data).win,12);
   assert.equal(trace.events.find(e=>e.transport==='ws'&&e.direction==='sent').payload.data,'AP8B');

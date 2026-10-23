@@ -1,6 +1,14 @@
 import {inspectPragmatic} from './pragmatic.js';
 import {createHash} from 'node:crypto';
 export const controlId=c=>createHash('sha256').update(c.path||c.label+'|'+c.x+'|'+c.y).digest('hex').slice(0,20);
+export function refinePhase(data){
+ const paths=(data.candidates||[]).map(c=>c.path||'');
+ if(data.state==='BONUS'){
+  if(paths.some(p=>/\/FreeSpins\/Content\/(?:RA\/)?(?:Result|End)\/ButtonContinue$/i.test(p)))return 'result';
+  if(paths.some(p=>/\/FreeSpins\/Content\/(?:RA\/)?Start\/ButtonContinue$/i.test(p)))return 'awaiting_start';
+ }
+ return data.roundPhase;
+}
 export function category(c){
  const s=(c.path+' '+c.label).toLowerCase();
  if(/buttonskipintro|show.*next.*time/.test(s))return 'ignore';
@@ -28,6 +36,7 @@ export async function inspect(page){
   let box={x:0,y:0,width:1280,height:720};
   if(frame!==page.mainFrame()){try{const e=await frame.frameElement();box=await e.boundingBox();}catch{continue;}}
   if(!box||box.width<100||box.height<100)continue;
+  data.roundPhase=refinePhase(data);
   const foreground=data.state==='INTRO'?data.candidates.filter(c=>/IntroScreen/.test(c.path)):data.candidates;
   const controls=foreground.map(c=>{const r=c.rect;return {...c,id:controlId(c),category:category(c),x:(box.x+(r.x+r.w/2)*box.width)/1280,y:(box.y+(r.y+r.h/2)*box.height)/720,frameRect:box,viewport:{width:1280,height:720}};}).filter(c=>c.x>=0&&c.x<=1&&c.y>=0&&c.y<=1);
   const score=(data.adapter==='pragmatic-runtime'?10000:0)+controls.length+box.width*box.height/10000;

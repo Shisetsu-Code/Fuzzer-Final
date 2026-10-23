@@ -38,7 +38,7 @@ export class GameSession{
  async saveTrace(actionId,record){
   const trace=await this.recorder.snapshot(actionId);
   await this.upload(this.job.id+'/traces/'+actionId+'.json',Buffer.from(JSON.stringify(trace)),'application/json');
-  const action={...record,id:actionId,gameId:this.game.id,sequence:this.sequence++,finished:Date.now(),viewport:{width:1280,height:720},traceComplete:trace.complete,droppedEvents:trace.dropped};
+  const action={...record,id:actionId,gameId:this.game.id,sequence:this.sequence++,finished:Date.now(),viewport:{width:1280,height:720},traceComplete:trace.complete,droppedEvents:trace.dropped,networkActionObserved:this.recorder.hasBet(actionId)};
   const s=await this.inspectGame(this.page);
   await this.post('/runner/action',{action,endpoints:summarizeTrace(trace),controls:s.controls});
   this.actions.push(action);this.recorder.drain();return action;
@@ -51,9 +51,13 @@ export class GameSession{
   this.recorder.actionId=actionId;
   const record={category:categoryName,label:control.label,x:control.x,y:control.y,controlId:control.id||null,path:control.path||null,observationId:before.id,beforeImage:before.imageKey,state:before.state,phase:before.phase,purpose,started};
   console.log(JSON.stringify({event:'click',game:this.game.id,label:control.label,purpose}));
-  await this.page.mouse.click(control.x*1280,control.y*720);
-  const settled=await this.settle({purchase:purpose==='purchase'||categoryName==='buy',spin:['normal','ante-spin'].includes(purpose)||categoryName==='spin',ante:categoryName==='ante'});
-  const after=await this.snapshot(settled.kind==='vision'?'needs_input':'running',settled.reason||settled.kind);
+  let settled;
+  try{await this.page.mouse.click(control.x*1280,control.y*720);settled=await this.settle({purchase:purpose==='purchase'||categoryName==='buy',spin:['normal','ante-spin'].includes(purpose)||categoryName==='spin',ante:categoryName==='ante'});}catch(e){await this.saveTrace(actionId,{...record,outcome:this.stopped?'stopped':'uncertain',reason:e.message}).catch(error=>console.error(JSON.stringify({event:'evidence_save_failed',message:error.message})));throw e;}
+  if(categoryName==='ante'&&settled.kind==='completed'){
+   const current=await this.inspectGame(this.page),toggle=current.controls.find(c=>c.category==='ante');
+   if(toggle&&toggle.id===control.id&&toggle.checked===control.checked&&toggle.label===control.label)settled={kind:'vision',reason:'ante-toggle-not-verified',continuations:settled.continuations};
+  }
+  let after;try{after=await this.snapshot(settled.kind==='vision'?'needs_input':'running',settled.reason||settled.kind);}catch(e){await this.saveTrace(actionId,{...record,outcome:'uncertain',reason:'post-action capture failed: '+e.message});throw e;}
   const action=await this.saveTrace(actionId,{...record,afterImage:after.imageKey,outcome:settled.kind,reason:settled.reason,continuations:settled.continuations||[]});
   return {settled,action};
  }
@@ -63,7 +67,7 @@ export class GameSession{
   while(Date.now()-started<120000){
    if(Date.now()-lastStopPoll>2000){await this.checkStop();lastStopPoll=Date.now();}
    const s=await this.inspectGame(this.page),cs=s.controls||[];
-   if(s.phase==='active'||s.phase==='spinning'||cs.some(c=>c.category==='active')){active=true;stable=0;lastClick=null;await sleep(300);continue;}
+   if(s.phase==='active'||s.phase==='spinning'||(!['awaiting_start','result','choice','awaiting_confirmation'].includes(s.phase)&&cs.some(c=>c.category==='active'))){active=true;stable=0;lastClick=null;await sleep(300);continue;}
    if(s.phase==='result')result=true;
    if(s.state==='BUY_MENU')return {kind:'menu',continuations};
    let allowed=[];

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {SuitePlanner} from '../runner/planner.js';
-import {category} from '../runner/adapter.js';
+import {category,refinePhase} from '../runner/adapter.js';
 const c=(id,category,label=id)=>({id,category,label,x:.5,y:.5,path:id});
 test('suite performs normal spins, Ante on/spin/off and every direct buy once',()=>{
  const p=new SuitePlanner({normalSpins:1,anteSpins:1,buyAll:true});
@@ -30,4 +30,8 @@ test('purchase menu is reopened only for unseen variants then opener is exhauste
  p.openedMenu(p.next(base));a=p.next(menu);assert.equal(a.control.id,'two');p.completed(a);
  p.openedMenu(p.next(base));a=p.next(menu);assert.equal(a.purpose,'close-menu');p.completed(a);
  assert.equal(p.next(base).kind,'done');assert.equal(p.summary().purchases,2);
+});
+test('bonus Start numeric continuation overrides background StopSpin active state',()=>{
+ const data={state:'BONUS',roundPhase:'active',candidates:[{path:'Root/FreeSpins/Content/RA/Start/ButtonContinue',label:'15'},{path:'Root/SpinButtons/StopSpin_Button',label:'ananas'}]};
+ assert.equal(refinePhase(data),'awaiting_start');
 });
