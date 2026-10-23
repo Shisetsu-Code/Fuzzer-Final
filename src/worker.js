@@ -40,7 +40,13 @@ async function callTool(name,args,env){
  const j=await row(env,args.jobId);if(!j)throw Error('job not found');
  if(name==='status')return textResult(publicJob(j));
  if(name==='observe'){
-  const info=publicJob(j),content=[{type:'text',text:JSON.stringify(info)}];
+  const info=publicJob(j);
+  info.imageAgeMs=info.observation?.capturedAt?Date.now()-info.observation.capturedAt:null;
+  if(j.status==='needs_input'&&info.imageAgeMs>5000){
+   const commandId='refresh-'+info.observation.id;
+   await env.DB.prepare("INSERT OR IGNORE INTO commands(job_id,id,body,created) SELECT ?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM commands WHERE job_id=? AND status IN ('queued','running'))").bind(j.id,commandId,JSON.stringify({kind:'snapshot',commandId}),Date.now(),j.id).run();info.refreshing=true;info.next='Call observe again for the refreshed image before clicking.';
+  }
+  const content=[{type:'text',text:JSON.stringify(info)}];
   if(info.observation?.imageKey){const obj=await env.EVIDENCE.get(info.observation.imageKey);if(obj){const bytes=new Uint8Array(await obj.arrayBuffer());let s='';for(let i=0;i<bytes.length;i+=8192)s+=String.fromCharCode(...bytes.subarray(i,i+8192));content.push({type:'image',mimeType:'image/jpeg',data:btoa(s)});}}
   return {content};
  }
@@ -50,7 +56,7 @@ async function callTool(name,args,env){
   if(existing){if(existing.body!==JSON.stringify(a))throw Error('commandId reused for different action');return textResult({accepted:true,duplicate:true});}
   if(!['running','needs_input'].includes(j.status)||!j.heartbeat||Date.now()-j.heartbeat>60000)throw Error('runner not live');
   const obs=parse(j.observation);
-  if(a.kind==='click'&&(obs?.id!==a.observationId||obs?.status!=='needs_input'))throw Error('stale observation or game still running');
+  if(a.kind==='click'&&(obs?.id!==a.observationId||obs?.status!=='needs_input'||Date.now()-(obs.capturedAt||0)>15000))throw Error('stale observation or game still running; call observe to refresh');
   const result=await env.DB.prepare(`INSERT INTO commands(job_id,id,body,created) SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM jobs WHERE id=? AND status IN ('running','needs_input') AND (? IS NULL OR json_extract(observation,'$.id')=?))`).bind(j.id,a.commandId,JSON.stringify(a),Date.now(),j.id,a.kind==='click'?a.observationId:null,a.observationId??null).run();
   if(!result.meta.changes)throw Error('observation changed');return textResult({accepted:true,commandId:a.commandId,next:'observe'});
  }

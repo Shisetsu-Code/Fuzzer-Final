@@ -31,7 +31,8 @@ export class Recorder{
   else {try{payload=encodePayload(await bounded(response.body(),5000));const ct=response.headers()['content-type']||'';if(/json|text|javascript|xml|x-www-form-urlencoded/.test(ct)){const text=Buffer.from(payload.data,'base64').toString('utf8');payload={...payload,encoding:'utf8',data:text};}}catch(e){payload={unavailable:true,reason:e.message.slice(0,160)};}}
   this.add({transport:'http',stage:'response',at:Date.now(),actionId,url:r.url(),method:r.method(),request:{headers,body:r.postDataBuffer()?encodePayload(r.postDataBuffer()):null},response:{status:response.status(),headers:responseHeaders,body:payload}});
  }
- hasBet(actionId){return this.events.some(e=>{if(e.actionId!==actionId)return false;const p=e.transport==='ws'?e.payload:e.request?.body;const body=p?(p.encoding==='base64'?Buffer.from(p.data,'base64').toString():p.data):'';return /\b(?:doSpin|doBonus|placeBet|gameSpin|spin_request|wager)\b/i.test((e.url||'')+' '+body);});}
+ gameplayRevision(actionId){return this.events.filter(e=>{if(e.actionId!==actionId)return false;const p=e.transport==='ws'?e.payload:e.request?.body;const body=p?(p.encoding==='base64'?Buffer.from(p.data,'base64').toString():p.data):'';return /\b(?:doSpin|doBonus|placeBet|gameSpin|spin_request|wager)\b/i.test((e.url||'')+' '+body);}).length;}
+ hasBet(actionId){return this.gameplayRevision(actionId)>0;}
  async snapshot(actionId){await bounded(Promise.allSettled([...this.pending]),6000).catch(()=>{});const events=this.events.filter(e=>e.actionId===actionId),incomplete=events.some(e=>[e.payload,e.request?.body,e.response?.body].some(p=>p&&(p.truncated||p.unavailable||p.omitted)));return {version:1,actionId,events,dropped:this.dropped,pendingBodies:this.pending.size,complete:this.dropped===0&&!incomplete&&this.pending.size===0};}
  drain(){this.events=[];this.bytes=0;this.dropped=0;}
 }

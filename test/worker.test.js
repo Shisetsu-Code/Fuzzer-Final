@@ -21,7 +21,7 @@ test('MCP jobs survive requests; one owner and stale observations cannot issue c
   assert.equal((await req('/runner/claim',{runnerId:'r1'},'runner')).body.job.id,job.id);
   assert.equal((await req('/runner/claim',{runnerId:'r2'},'runner')).body.job,null);
   assert.equal((await req('/runner/heartbeat',{jobId:job.id,runnerId:'r2'},'runner')).status,409);
-  const observation={id:'obs1',gameId:'olympus',status:'needs_input',controls:[],imageKey:'image.jpg'};
+  const observation={id:'obs1',gameId:'olympus',status:'needs_input',controls:[],imageKey:'image.jpg',capturedAt:Date.now()};
   assert.equal((await req('/runner/heartbeat',{jobId:job.id,runnerId:'r1',observation},'runner')).status,200);
   const call=async(args)=>req('/mcp',{jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'act',arguments:{jobId:job.id,...args}}});
   const click={kind:'click',commandId:'click1',observationId:'obs1',x:.2,y:.3,category:'buy'};

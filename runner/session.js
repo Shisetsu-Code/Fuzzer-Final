@@ -6,7 +6,7 @@ import {SuitePlanner} from './planner.js';
 import {sleep} from './client.js';
 const id=()=>randomUUID();
 export class GameSession{
- constructor({browser,cloud,job,runnerId,game,inspectGame=inspect}){Object.assign(this,{browser,cloud,job,runnerId,game,inspectGame});this.planner=new SuitePlanner(job.spec);this.sequence=0;this.actions=[];this.stopped=false;this.lastObservation=null;this.pendingPurpose=null;}
+ constructor({browser,cloud,job,runnerId,game,inspectGame=inspect}){Object.assign(this,{browser,cloud,job,runnerId,game,inspectGame});this.planner=new SuitePlanner(job.spec);this.sequence=0;this.actions=[];this.stopped=false;this.lastObservation=null;this.pendingPurpose=null;this.deadline=Date.now()+15*60000;}
  async post(path,data={}){return this.cloud.post(path,{jobId:this.job.id,runnerId:this.runnerId,...data});}
  async upload(key,bytes,type){await this.cloud.upload(this.job.id,this.runnerId,key,bytes,type);return key;}
  async open(){
@@ -62,11 +62,17 @@ export class GameSession{
   return {settled,action};
  }
  async settle({purchase=false,spin=false,ante=false}={}){
-  const started=Date.now(),continuations=[];let stable=0,lastKey='',active=false,result=false,lastClick=null,lastClickAt=0,lastStopPoll=0;
+  const started=Date.now(),continuations=[];let stable=0,lastKey='',active=false,result=false,lastClick=null,lastClickAt=0,lastStopPoll=0,lastPublished=Date.now(),publishedStage='',lastProgress=Date.now(),lastRevision=0;
   await sleep(200);
-  while(Date.now()-started<120000){
+  while(Date.now()<this.deadline){
    if(Date.now()-lastStopPoll>2000){await this.checkStop();lastStopPoll=Date.now();}
    const s=await this.inspectGame(this.page),cs=s.controls||[];
+   const stage=s.state+'/'+s.phase;
+   const revision=this.recorder.gameplayRevision?.(this.recorder.actionId)||0;
+   if(stage!==publishedStage||revision!==lastRevision){lastProgress=Date.now();lastRevision=revision;}
+   if(Date.now()-lastProgress>45000)return {kind:'vision',reason:'no-round-progress-45s',continuations};
+   if(this.page&&(Date.now()-lastPublished>10000||(publishedStage&&stage!==publishedStage))){await this.snapshot('running','executing '+stage);lastPublished=Date.now();console.log(JSON.stringify({event:'phase',game:this.game.id,state:s.state,phase:s.phase,elapsedMs:Date.now()-started}));}
+   publishedStage=stage;
    if(s.phase==='active'||s.phase==='spinning'||(!['awaiting_start','result','choice','awaiting_confirmation'].includes(s.phase)&&cs.some(c=>c.category==='active'))){active=true;stable=0;lastClick=null;await sleep(300);continue;}
    if(s.phase==='result')result=true;
    if(s.state==='BUY_MENU')return {kind:'menu',continuations};
@@ -99,19 +105,29 @@ export class GameSession{
   return {kind:'vision',reason:'transition-timeout',continuations};
  }
  async checkStop(){
+  if(Date.now()>this.deadline)throw Error('game execution budget reached (15 minutes)');
   const {command}=await this.post('/runner/command');if(!command)return;
+  if(command.kind==='snapshot'){await this.snapshot('running','live refresh');await this.post('/runner/ack',{commandId:command.commandId});return;}
   if(command.kind==='stop'){this.stopped=true;await this.post('/runner/ack',{commandId:command.commandId});throw Error('stopped by operator');}
   await this.post('/runner/ack',{commandId:command.commandId,error:'game is executing; wait for needs_input'});
  }
  async waitForInput(reason){
   await this.snapshot('needs_input',reason);const start=Date.now();
-  while(Date.now()-start<600000){
+  while(Date.now()-start<600000&&Date.now()<this.deadline){
    const {command}=await this.post('/runner/command');
    if(!command){await sleep(1000);continue;}
    try{
+    if(command.kind==='snapshot'){await this.snapshot('needs_input',reason);await this.post('/runner/ack',{commandId:command.commandId});continue;}
     if(command.kind==='stop'){this.stopped=true;await this.post('/runner/ack',{commandId:command.commandId});return 'stop';}
     if(command.kind==='finish_game'){this.reviewedSummary=command.summary;await this.post('/runner/ack',{commandId:command.commandId});return 'finish';}
-    if(command.kind==='resume'){await this.post('/runner/ack',{commandId:command.commandId});return 'resume';}
+    if(command.kind==='resume'){
+     if(!this.pendingAuto){await this.post('/runner/ack',{commandId:command.commandId});return 'resume';}
+     const actionId=id();this.recorder.actionId=actionId;
+     const settled=await this.settle({purchase:this.pendingAuto.purpose==='purchase',spin:['normal','ante-spin'].includes(this.pendingAuto.purpose)});
+     await this.saveTrace(actionId,{category:'continue',label:'Resume existing round',purpose:'resume',started:Date.now(),outcome:settled.kind,continuations:settled.continuations||[]});
+     await this.post('/runner/ack',{commandId:command.commandId});
+     if(settled.kind==='completed')return 'action-completed';await this.snapshot('needs_input',settled.reason||settled.kind);continue;
+    }
     if(command.observationId!==this.lastObservation?.id)throw Error('stale observation at execution');
     const {settled}=await this.click({...command,id:command.commandId},{actionId:command.commandId,purpose:command.category==='buy'||this.pendingAuto?.purpose==='purchase'?'purchase':'manual'});
     await this.post('/runner/ack',{commandId:command.commandId});

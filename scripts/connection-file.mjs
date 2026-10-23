@@ -1,0 +1,4 @@
+import fs from 'node:fs/promises';
+const output=process.argv[2];if(!output)throw Error('Provide a private output file path');
+const line=(await fs.readFile('.dev.vars','utf8')).split(/\r?\n/).find(l=>l.startsWith('ACCESS_TOKEN='));if(!line)throw Error('Access key not configured');
+await fs.writeFile(output,'Fuzzer Final — conexión privada\n\nRepositorio: https://github.com/Shisetsu-Code/Fuzzer-Final\nMCP: https://fuzzer-final.braian-n-l.workers.dev/mcp\nAutenticación: OAuth\n\nAl conectar desde ChatGPT, la pantalla de Fuzzer Final pide esta clave:\n'+line.slice('ACCESS_TOKEN='.length)+'\n\nEsta clave controla Fuzzer Final y permite leer sus trazas privadas. No publicarla ni subirla al repositorio.\n\nUso: indicá las URLs de los juegos demo y pedí normal spins, Ante Bet y todas las compras. El MCP mantiene la sesión abierta. Para pantallas desconocidas, ChatGPT usa observe/act.\n',{mode:0o600});console.log('Private connection file written.');

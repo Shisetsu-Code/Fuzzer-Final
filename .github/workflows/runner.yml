@@ -12,7 +12,7 @@ jobs:
   run:
     if: vars.FUZZER_URL != ''
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    timeout-minutes: 360
     env:
       FUZZER_URL: ${{ vars.FUZZER_URL }}
       FUZZER_RUNNER_TOKEN: ${{ secrets.FUZZER_RUNNER_TOKEN }}
