@@ -15,3 +15,9 @@ test('an uncertain click error preserves the available action trace before closi
  await assert.rejects(()=>session.click(control),/transport lost/);
  assert.equal(saved[0]?.outcome,'uncertain');assert.equal(saved[0]?.label,'Spin');
 });
+test('an already-active game uses the progress monitor instead of an unbounded sleep loop',async()=>{
+ const session=new GameSession({game:{id:'fixture'},job:{spec:{maxSteps:1}},cloud:{post:async()=>({command:null})},inspectGame:async()=>({state:'BASE',phase:'spinning',controls:[]})});
+ session.open=async()=>{};session.recorder={};session.snapshot=async()=>({});session.saveTrace=async()=>{};
+ session.settle=async()=>({kind:'vision',reason:'no-round-progress'});session.waitForInput=async()=> 'stop';
+ assert.equal((await session.run()).status,'stopped');
+});

@@ -145,7 +145,14 @@ export class GameSession{
     await this.checkStop();
     const s=await this.inspectGame(this.page),a=this.planner.next(s);
     if(a.kind==='done')return {gameId:this.game.id,status:'completed',...this.planner.summary(),actions:this.actions.length};
-    if(a.kind==='wait'){await sleep(500);continue;}
+    if(a.kind==='wait'){
+     const actionId=id(),started=Date.now();this.recorder.actionId=actionId;
+     let settled;
+     try{settled=await this.settle();await this.snapshot(settled.kind==='vision'?'needs_input':'running',settled.reason||settled.kind);await this.saveTrace(actionId,{category:'continue',label:'Observe active round',purpose:'wait',started,outcome:settled.kind,continuations:settled.continuations||[]});}
+     catch(e){await this.saveTrace(actionId,{category:'continue',label:'Observe active round',purpose:'wait',started,outcome:this.stopped?'stopped':'uncertain',reason:e.message}).catch(()=>{});throw e;}
+     if(settled.kind==='vision'){const answer=await this.waitForInput(settled.reason);if(answer==='stop')return {gameId:this.game.id,status:'stopped'};if(answer==='finish')return {gameId:this.game.id,status:'completed',coverage:'ChatGPT-reviewed',summary:this.reviewedSummary,...this.planner.summary()};}
+     continue;
+    }
     if(a.kind==='vision'){const answer=await this.waitForInput(a.reason);if(answer==='stop')return {gameId:this.game.id,status:'stopped'};if(a.reason==='purchase-menu-exhausted-return-to-base'&&answer==='action-completed')this.planner.completed({purpose:'close-menu'});if(answer==='finish')return {gameId:this.game.id,status:'completed',coverage:'ChatGPT-reviewed',summary:this.reviewedSummary,...this.planner.summary()};continue;}
     const {settled}=await this.click(a.control,{purpose:a.purpose});
     if(settled.kind==='completed')this.planner.completed(a);
