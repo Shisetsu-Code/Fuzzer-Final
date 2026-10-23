@@ -1,0 +1,32 @@
+name: Demo runner
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+permissions:
+  contents: read
+concurrency:
+  group: demo-runner
+  cancel-in-progress: false
+jobs:
+  run:
+    if: vars.FUZZER_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      FUZZER_URL: ${{ vars.FUZZER_URL }}
+      FUZZER_RUNNER_TOKEN: ${{ secrets.FUZZER_RUNNER_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Use preinstalled Chrome
+        run: echo "CHROME_PATH=$(command -v google-chrome)" >> "$GITHUB_ENV"
+      - run: npm run runner
+      # Evidence is private in R2. Never upload session payloads to public Actions artifacts.
+      - name: Report
+        if: always()
+        run: echo 'Detailed evidence and coordinate maps remain in private Cloudflare R2/D1.' >> "$GITHUB_STEP_SUMMARY"

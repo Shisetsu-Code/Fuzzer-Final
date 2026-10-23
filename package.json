@@ -1,0 +1,26 @@
+{
+  "name": "fuzzer-final",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check": "node scripts/check.mjs",
+    "runner": "node runner/main.mjs",
+    "deploy": "wrangler deploy",
+    "db:migrate": "wrangler d1 migrations apply fuzzer-final --remote",
+    "test:browser": "node --test test/browser.integration.js"
+  },
+  "dependencies": {
+    "playwright": "^1.56.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "miniflare": "^5.20261019.2-beta",
+    "wrangler": "^4.99.0",
+    "ws": "^8.22.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

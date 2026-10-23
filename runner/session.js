@@ -1,0 +1,138 @@
+import {randomUUID} from 'node:crypto';
+import {inspect,category} from './adapter.js';
+import {Recorder,summarizeTrace} from './recorder.js';
+import {speedInit} from './speed.js';
+import {SuitePlanner} from './planner.js';
+import {sleep} from './client.js';
+const id=()=>randomUUID();
+export class GameSession{
+ constructor({browser,cloud,job,runnerId,game,inspectGame=inspect}){Object.assign(this,{browser,cloud,job,runnerId,game,inspectGame});this.planner=new SuitePlanner(job.spec);this.sequence=0;this.actions=[];this.stopped=false;this.lastObservation=null;this.pendingPurpose=null;}
+ async post(path,data={}){return this.cloud.post(path,{jobId:this.job.id,runnerId:this.runnerId,...data});}
+ async upload(key,bytes,type){await this.cloud.upload(this.job.id,this.runnerId,key,bytes,type);return key;}
+ async open(){
+  this.context=await this.browser.newContext({viewport:{width:1280,height:720},serviceWorkers:'block'});
+  await this.context.addInitScript(speedInit,this.job.spec.speed);
+  // Refuse account/checkout redirects while allowing demo asset and game hosts.
+  await this.context.route('**/*',async route=>{
+   const req=route.request(),url=new URL(req.url());
+   if(req.isNavigationRequest()&&/login|sign.?in|checkout|cashier|deposit|payment/i.test(url.pathname))return route.abort();
+   return route.continue();
+  });
+  this.page=await this.context.newPage();this.page.setDefaultTimeout(4000);this.page.setDefaultNavigationTimeout(45000);
+  this.recorder=new Recorder(this.page);const loadId=id();this.recorder.actionId=loadId;await this.page.goto(this.game.url,{waitUntil:'domcontentloaded'});
+  // The operator explicitly confirms adult status; no account credentials are used.
+  for(const label of [/Yes, I am 18/i,/Reject All/i,/Reject all cookies/i]){
+   const e=this.page.getByRole('link',{name:label}).or(this.page.getByRole('button',{name:label}));if(await e.count()===1)await e.click().catch(()=>{});
+  }
+  const demo=this.page.getByRole('link',{name:/^play demo$/i}).or(this.page.getByRole('button',{name:/^play demo$/i}));if(await demo.count()===1)await demo.click();
+  const started=Date.now();let s;
+  do{s=await this.inspectGame(this.page);if(s.controls.length||Date.now()-started>30000)break;await sleep(500);}while(true);
+  await this.saveTrace(loadId,{category:'load',label:'Initial demo load',outcome:'loaded',started});
+  return s;
+ }
+ async snapshot(status,reason){
+  const s=await this.inspectGame(this.page);const observation={id:id(),gameId:this.game.id,status,reason,state:s.state,phase:s.phase,controls:s.controls,viewport:{width:1280,height:720},frameRect:s.frameRect,progress:this.planner.summary(),capturedAt:Date.now()};
+  observation.imageKey=await this.upload(this.job.id+'/images/'+observation.id+'.jpg',await this.page.screenshot({type:'jpeg',quality:65}),'image/jpeg');
+  this.lastObservation=observation;await this.post('/runner/heartbeat',{observation});return observation;
+ }
+ async saveTrace(actionId,record){
+  const trace=await this.recorder.snapshot(actionId);
+  await this.upload(this.job.id+'/traces/'+actionId+'.json',Buffer.from(JSON.stringify(trace)),'application/json');
+  const action={...record,id:actionId,gameId:this.game.id,sequence:this.sequence++,finished:Date.now(),viewport:{width:1280,height:720},traceComplete:trace.complete,droppedEvents:trace.dropped};
+  const s=await this.inspectGame(this.page);
+  await this.post('/runner/action',{action,endpoints:summarizeTrace(trace),controls:s.controls});
+  this.actions.push(action);this.recorder.drain();return action;
+ }
+ async click(control,{purpose='manual',actionId=id()}={}){
+  if(!Number.isFinite(control.x)||!Number.isFinite(control.y)||control.x<0||control.y<0||control.x>1||control.y>1)throw Error('invalid click coordinates');
+  const before=await this.snapshot('running','before '+control.label),started=Date.now();
+  if(control.path){const current=await this.inspectGame(this.page);const fresh=current.controls.find(c=>c.id===control.id);if(!fresh)return {settled:{kind:'next',reason:'control-changed-before-click'},action:null};control=fresh;}
+  const categoryName=control.category||category(control);
+  this.recorder.actionId=actionId;
+  const record={category:categoryName,label:control.label,x:control.x,y:control.y,controlId:control.id||null,path:control.path||null,observationId:before.id,beforeImage:before.imageKey,state:before.state,phase:before.phase,purpose,started};
+  console.log(JSON.stringify({event:'click',game:this.game.id,label:control.label,purpose}));
+  await this.page.mouse.click(control.x*1280,control.y*720);
+  const settled=await this.settle({purchase:purpose==='purchase'||categoryName==='buy',spin:['normal','ante-spin'].includes(purpose)||categoryName==='spin',ante:categoryName==='ante'});
+  const after=await this.snapshot(settled.kind==='vision'?'needs_input':'running',settled.reason||settled.kind);
+  const action=await this.saveTrace(actionId,{...record,afterImage:after.imageKey,outcome:settled.kind,reason:settled.reason,continuations:settled.continuations||[]});
+  return {settled,action};
+ }
+ async settle({purchase=false,spin=false,ante=false}={}){
+  const started=Date.now(),continuations=[];let stable=0,lastKey='',active=false,result=false,lastClick=null,lastClickAt=0,lastStopPoll=0;
+  await sleep(200);
+  while(Date.now()-started<120000){
+   if(Date.now()-lastStopPoll>2000){await this.checkStop();lastStopPoll=Date.now();}
+   const s=await this.inspectGame(this.page),cs=s.controls||[];
+   if(s.phase==='active'||s.phase==='spinning'||cs.some(c=>c.category==='active')){active=true;stable=0;lastClick=null;await sleep(300);continue;}
+   if(s.phase==='result')result=true;
+   if(s.state==='BUY_MENU')return {kind:'menu',continuations};
+   let allowed=[];
+   if(s.state==='CONFIRM'&&purchase)allowed=cs.filter(c=>c.category==='confirm');
+   if(s.state==='BONUS'&&['awaiting_start','result'].includes(s.phase))allowed=cs.filter(c=>c.category==='continue');
+   if(allowed.length===1){
+    let c=allowed[0];const key=s.state+'|'+s.phase+'|'+c.id;
+    if(lastClick===key){if(Date.now()-lastClickAt>=2000)return {kind:'vision',reason:'continuation-did-not-advance',continuations};await sleep(250);continue;}
+    if(continuations.length>=30)return {kind:'vision',reason:'continuation-limit',continuations};
+    const pre=await this.page.screenshot({type:'jpeg',quality:60});const imageKey=await this.upload(this.job.id+'/images/'+id()+'.jpg',pre,'image/jpeg');
+    // Purchase windows animate in: a collider read before the screenshot may be
+    // at a different position by the time the click is sent. Wait for geometry.
+    let stableControl=false;
+    for(let n=0;n<12;n++){await sleep(100);const current=await this.inspectGame(this.page);const fresh=current.controls.find(x=>x.id===c.id);if(!fresh)break;const delta=Math.abs(fresh.x-c.x)+Math.abs(fresh.y-c.y);c=fresh;if(delta<0.002){stableControl=true;break;}}
+    if(!stableControl){await sleep(200);continue;}
+    lastClick=key;lastClickAt=Date.now();
+    continuations.push({...c,beforeImage:imageKey,at:Date.now()});
+    console.log(JSON.stringify({event:'continue',game:this.game.id,label:c.label,phase:s.phase,x:c.x,y:c.y,path:c.path}));await this.page.mouse.click(c.x*1280,c.y*720);await sleep(350);stable=0;continue;
+   }
+   if(s.state==='BASE'&&s.phase==='idle'){
+    const key=JSON.stringify(cs.map(c=>c.id));stable=key===lastKey?stable+1:0;lastKey=key;
+    if(stable>=2){if(purchase&&!result){if(Date.now()-lastClickAt<3000){await sleep(300);continue;}return {kind:'vision',reason:'purchase-result-not-observed',continuations};}if(spin&&!active&&!this.recorder.hasBet(this.recorder.actionId)){if(Date.now()-started<1500){await sleep(300);continue;}return {kind:'vision',reason:'spin-not-observed',continuations};}return {kind:'completed',continuations};}
+   }else if(s.state==='INTRO')return {kind:'next',continuations};
+   else if(s.phase==='choice')return {kind:'vision',reason:'bonus-choice',continuations};
+   else if(s.state==='UNKNOWN'&&Date.now()-started>1500)return {kind:'vision',reason:'unknown-screen',continuations};
+   else stable=0;
+   await sleep(300);
+  }
+  return {kind:'vision',reason:'transition-timeout',continuations};
+ }
+ async checkStop(){
+  const {command}=await this.post('/runner/command');if(!command)return;
+  if(command.kind==='stop'){this.stopped=true;await this.post('/runner/ack',{commandId:command.commandId});throw Error('stopped by operator');}
+  await this.post('/runner/ack',{commandId:command.commandId,error:'game is executing; wait for needs_input'});
+ }
+ async waitForInput(reason){
+  await this.snapshot('needs_input',reason);const start=Date.now();
+  while(Date.now()-start<600000){
+   const {command}=await this.post('/runner/command');
+   if(!command){await sleep(1000);continue;}
+   try{
+    if(command.kind==='stop'){this.stopped=true;await this.post('/runner/ack',{commandId:command.commandId});return 'stop';}
+    if(command.kind==='finish_game'){this.reviewedSummary=command.summary;await this.post('/runner/ack',{commandId:command.commandId});return 'finish';}
+    if(command.kind==='resume'){await this.post('/runner/ack',{commandId:command.commandId});return 'resume';}
+    if(command.observationId!==this.lastObservation?.id)throw Error('stale observation at execution');
+    const {settled}=await this.click({...command,id:command.commandId},{actionId:command.commandId,purpose:command.category==='buy'||this.pendingAuto?.purpose==='purchase'?'purchase':'manual'});
+    await this.post('/runner/ack',{commandId:command.commandId});
+    if(settled.kind==='completed')return 'action-completed';
+    if(settled.kind==='menu')return 'resume';
+    await this.snapshot('needs_input',settled.reason);
+   }catch(e){await this.post('/runner/ack',{commandId:command.commandId,error:e.message});throw e;}
+  }
+  throw Error('ChatGPT input timeout (10 minutes); evidence retained');
+ }
+ async run(){
+  try{
+   await this.open();
+   for(let step=0;step<150;step++){
+    await this.checkStop();
+    const s=await this.inspectGame(this.page),a=this.planner.next(s);
+    if(a.kind==='done')return {gameId:this.game.id,status:'completed',...this.planner.summary(),actions:this.actions.length};
+    if(a.kind==='wait'){await sleep(500);continue;}
+    if(a.kind==='vision'){const answer=await this.waitForInput(a.reason);if(answer==='stop')return {gameId:this.game.id,status:'stopped'};if(a.reason==='purchase-menu-exhausted-return-to-base'&&answer==='action-completed')this.planner.completed({purpose:'close-menu'});if(answer==='finish')return {gameId:this.game.id,status:'completed',coverage:'ChatGPT-reviewed',summary:this.reviewedSummary,...this.planner.summary()};continue;}
+    const {settled}=await this.click(a.control,{purpose:a.purpose});
+    if(settled.kind==='completed')this.planner.completed(a);
+    if(settled.kind==='menu')this.planner.openedMenu(a);
+    if(settled.kind==='vision'){this.pendingAuto=a;const answer=await this.waitForInput(settled.reason);this.pendingAuto=null;if(answer==='action-completed')this.planner.completed(a);if(answer==='stop')return {gameId:this.game.id,status:'stopped'};if(answer==='finish')return {gameId:this.game.id,status:'completed',coverage:'ChatGPT-reviewed',summary:this.reviewedSummary,...this.planner.summary()};}
+   }
+   throw Error('step budget reached; suite incomplete');
+  }catch(e){if(this.stopped)return {gameId:this.game.id,status:'stopped'};throw e;}finally{await this.context?.close();}
+ }
+}

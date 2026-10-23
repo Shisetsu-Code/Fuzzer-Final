@@ -1,0 +1,12 @@
+{
+ "$schema":"node_modules/wrangler/config-schema.json",
+ "name":"fuzzer-final",
+ "main":"src/worker.js",
+ "compatibility_date":"2026-10-23",
+ "account_id":"3904fa9871c00ad145ed8f8f5404d1bd",
+ "workers_dev":true,
+ "observability":{"enabled":true,"traces":{"enabled":true}},
+ "d1_databases":[{"binding":"DB","database_name":"fuzzer-final","database_id":"48c52da4-256d-4c91-9fb1-42d1a55dfcb9"}],
+ "r2_buckets":[{"binding":"EVIDENCE","bucket_name":"fuzzer-final-evidence"}],
+ "vars":{"GITHUB_REPOSITORY":"Shisetsu-Code/Fuzzer-Final"}
+}

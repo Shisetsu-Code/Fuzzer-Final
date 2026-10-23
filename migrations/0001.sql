@@ -1,0 +1,10 @@
+CREATE TABLE jobs(id TEXT PRIMARY KEY, spec TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued', runner TEXT, created INTEGER NOT NULL, heartbeat INTEGER, observation TEXT, result TEXT, error TEXT);
+CREATE TABLE commands(job_id TEXT NOT NULL REFERENCES jobs(id), id TEXT NOT NULL, body TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued', created INTEGER NOT NULL, PRIMARY KEY(job_id,id));
+CREATE UNIQUE INDEX command_pending ON commands(job_id) WHERE status IN ('queued','running');
+CREATE TABLE actions(job_id TEXT NOT NULL, id TEXT NOT NULL, game_id TEXT NOT NULL, category TEXT NOT NULL, label TEXT NOT NULL, x REAL, y REAL, observation_id TEXT, trace_key TEXT NOT NULL, record TEXT NOT NULL, PRIMARY KEY(job_id,id));
+CREATE TABLE endpoints(job_id TEXT NOT NULL, action_id TEXT NOT NULL, transport TEXT NOT NULL, method TEXT NOT NULL, endpoint TEXT NOT NULL, count INTEGER NOT NULL, PRIMARY KEY(job_id,action_id,transport,method,endpoint));
+CREATE INDEX endpoint_lookup ON endpoints(endpoint);
+CREATE TABLE oauth_clients(id TEXT PRIMARY KEY, redirects TEXT NOT NULL);
+CREATE TABLE oauth_codes(hash TEXT PRIMARY KEY, client_id TEXT NOT NULL, redirect_uri TEXT NOT NULL, challenge TEXT NOT NULL, expires INTEGER NOT NULL);
+CREATE TABLE oauth_tokens(hash TEXT PRIMARY KEY, expires INTEGER NOT NULL);
+CREATE TABLE controls(job_id TEXT NOT NULL, game_id TEXT NOT NULL, id TEXT NOT NULL, record TEXT NOT NULL, PRIMARY KEY(job_id,game_id,id));
