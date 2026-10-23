@@ -1,9 +1,10 @@
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {inspect,category} from './adapter.js';
 import {Recorder,summarizeTrace} from './recorder.js';
 import {speedInit} from './speed.js';
 import {SuitePlanner} from './planner.js';
 import {sleep} from './client.js';
+import {ProgressWatchdog} from './progress.js';
 const id=()=>randomUUID();
 export class GameSession{
  constructor({browser,cloud,job,runnerId,game,inspectGame=inspect}){Object.assign(this,{browser,cloud,job,runnerId,game,inspectGame});this.planner=new SuitePlanner(job.spec);this.sequence=0;this.actions=[];this.stopped=false;this.lastObservation=null;this.pendingPurpose=null;this.deadline=job.spec.maxGameMinutes?Date.now()+job.spec.maxGameMinutes*60000:Infinity;}
@@ -32,7 +33,8 @@ export class GameSession{
  }
  async snapshot(status,reason){
   const s=await this.inspectGame(this.page);const observation={id:id(),gameId:this.game.id,status,reason,state:s.state,phase:s.phase,controls:s.controls,viewport:{width:1280,height:720},frameRect:s.frameRect,progress:this.planner.summary(),capturedAt:Date.now()};
-  observation.imageKey=await this.upload(this.job.id+'/images/'+observation.id+'.jpg',await this.page.screenshot({type:'jpeg',quality:65}),'image/jpeg');
+  const image=await this.page.screenshot({type:'jpeg',quality:65});observation.imageSha256=createHash('sha256').update(image).digest('hex');
+  observation.imageKey=await this.upload(this.job.id+'/images/'+observation.id+'.jpg',image,'image/jpeg');
   this.lastObservation=observation;await this.post('/runner/heartbeat',{observation});return observation;
  }
  async saveTrace(actionId,record){
@@ -62,16 +64,16 @@ export class GameSession{
   return {settled,action};
  }
  async settle({purchase=false,spin=false,ante=false}={}){
-  const started=Date.now(),continuations=[];let stable=0,lastKey='',active=false,result=false,lastClick=null,lastClickAt=0,lastStopPoll=0,lastPublished=Date.now(),publishedStage='',lastProgress=Date.now(),lastRevision=0;
+  const started=Date.now(),continuations=[],progress=new ProgressWatchdog({stallSeconds:this.job.spec.stallSeconds??45});let stable=0,lastKey='',active=false,result=false,lastClick=null,lastClickAt=0,lastStopPoll=0,lastPublished=Date.now(),publishedStage='';
   await sleep(200);
   while(Date.now()<this.deadline){
    if(Date.now()-lastStopPoll>2000){await this.checkStop();lastStopPoll=Date.now();}
    const s=await this.inspectGame(this.page),cs=s.controls||[];
    const stage=s.state+'/'+s.phase;
    const revision=this.recorder.gameplayRevision?.(this.recorder.actionId)||0;
-   if(stage!==publishedStage||revision!==lastRevision){lastProgress=Date.now();lastRevision=revision;}
-   if(Date.now()-lastProgress>(this.job.spec.stallSeconds??45)*1000)return {kind:'vision',reason:'no-round-progress',continuations};
-   if(this.page&&(Date.now()-lastPublished>10000||(publishedStage&&stage!==publishedStage))){await this.snapshot('running','executing '+stage);lastPublished=Date.now();console.log(JSON.stringify({event:'phase',game:this.game.id,state:s.state,phase:s.phase,elapsedMs:Date.now()-started}));}
+   progress.update({stage,revision});
+   if(this.page&&(Date.now()-lastPublished>10000||(publishedStage&&stage!==publishedStage))){const observation=await this.snapshot('running','executing '+stage);progress.update({imageHash:observation.imageSha256});lastPublished=Date.now();console.log(JSON.stringify({event:'phase',game:this.game.id,state:s.state,phase:s.phase,elapsedMs:Date.now()-started}));}
+   if(progress.stalled())return {kind:'vision',reason:'no-round-progress',continuations};
    publishedStage=stage;
    if(s.phase==='active'||s.phase==='spinning'||(!['awaiting_start','result','choice','awaiting_confirmation'].includes(s.phase)&&cs.some(c=>c.category==='active'))){active=true;stable=0;lastClick=null;await sleep(300);continue;}
    if(s.phase==='result')result=true;

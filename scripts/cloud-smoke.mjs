@@ -12,7 +12,7 @@ if(process.argv[2]?.startsWith('start')){
  const job=JSON.parse(result.content[0].text);await fs.writeFile('work/cloud-job.json',JSON.stringify(job));console.log(JSON.stringify(job));
 }else{
  const {id}=JSON.parse(await fs.readFile('work/cloud-job.json','utf8'));
- if(process.argv[2]==='stop'){await rpc('act',{jobId:id,kind:'stop',commandId:crypto.randomUUID()});console.log('Stop requested');process.exit(0);}
+ if(['stop','resume'].includes(process.argv[2])){await rpc('act',{jobId:id,kind:process.argv[2],commandId:crypto.randomUUID()});console.log(process.argv[2]+' requested');process.exit(0);}
  const result=await rpc(process.argv[2]==='observe'?'observe':'status',{jobId:id});
  const j=JSON.parse(result.content[0].text);console.log(JSON.stringify({id,status:j.status,heartbeatAgeMs:j.heartbeatAgeMs,state:j.observation?.state,phase:j.observation?.phase,reason:j.observation?.reason,progress:j.observation?.progress,result:j.result,error:j.error}));
  await fs.writeFile('work/cloud-status.json',JSON.stringify(j,null,2));

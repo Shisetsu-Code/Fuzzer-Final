@@ -22,7 +22,18 @@ export function speedInit(factor) {
   g.setTimeout=(callback,delay,...args)=>realSetTimeout(callback,accelerated(delay),...args);
   g.setInterval=(callback,delay,...args)=>realSetInterval(callback,accelerated(delay),...args);
   if(realRAF)g.requestAnimationFrame=callback=>realRAF(timestamp=>callback(origin+(timestamp-origin)*state.factor));
-  // Keep Date.now and network clocks untouched (session expiry, auth, TLS).
+  // Some engines advance animations with Date.now rather than RAF timestamps.
+  // Virtualize the game frame's JS wall clock too; browser/TLS/server clocks
+  // remain native. Use factor 1 for providers that bind client session expiry
+  // to their animation clock.
+  const NativeDate=g.Date;
+  const nativeDateNow=NativeDate.now.bind(NativeDate),epoch=nativeDateNow();
+  const virtualDateNow=()=>epoch+(nativeDateNow()-epoch)*state.factor;
+  g.Date=new Proxy(NativeDate,{
+    construct(target,args,newTarget){return Reflect.construct(target,args.length?args:[virtualDateNow()],newTarget);},
+    apply(){return new NativeDate(virtualDateNow()).toString();},
+    get(target,key,receiver){return key==='now'?virtualDateNow:Reflect.get(target,key,receiver);}
+  });
   // The game engine's performance clock is optional: some browsers make it read-only.
   let virtualClock=false;
   if(realNow){try{
