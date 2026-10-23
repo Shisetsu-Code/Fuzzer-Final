@@ -16,7 +16,8 @@ export function validateJob(j,hosts=DEMO_HOSTS){
  const speed=j.speed??4,normalSpins=j.normalSpins??1,anteSpins=j.anteSpins??1;
  if(![1,2,4,8].includes(speed))throw Error('speed must be 1,2,4,8');
  for(const n of [normalSpins,anteSpins])if(!Number.isInteger(n)||n<0||n>10)throw Error('spin count must be 0..10');
- return {games,speed,normalSpins,anteSpins,buyAll:j.buyAll!==false};
+ const budgets={};for(const k of ['maxGameMinutes','maxSteps','inputTimeoutMinutes','stallSeconds'])if(j[k]!==undefined){if(!Number.isSafeInteger(j[k])||j[k]<1)throw Error(k+' must be a positive integer');budgets[k]=j[k];}
+ return {games,speed,normalSpins,anteSpins,buyAll:j.buyAll!==false,...budgets};
 }
 export function validateAction(a){
  if(!a||!['click','resume','stop','finish_game'].includes(a.kind))throw Error('invalid action');

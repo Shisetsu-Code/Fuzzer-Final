@@ -6,7 +6,7 @@ import {SuitePlanner} from './planner.js';
 import {sleep} from './client.js';
 const id=()=>randomUUID();
 export class GameSession{
- constructor({browser,cloud,job,runnerId,game,inspectGame=inspect}){Object.assign(this,{browser,cloud,job,runnerId,game,inspectGame});this.planner=new SuitePlanner(job.spec);this.sequence=0;this.actions=[];this.stopped=false;this.lastObservation=null;this.pendingPurpose=null;this.deadline=Date.now()+15*60000;}
+ constructor({browser,cloud,job,runnerId,game,inspectGame=inspect}){Object.assign(this,{browser,cloud,job,runnerId,game,inspectGame});this.planner=new SuitePlanner(job.spec);this.sequence=0;this.actions=[];this.stopped=false;this.lastObservation=null;this.pendingPurpose=null;this.deadline=job.spec.maxGameMinutes?Date.now()+job.spec.maxGameMinutes*60000:Infinity;}
  async post(path,data={}){return this.cloud.post(path,{jobId:this.job.id,runnerId:this.runnerId,...data});}
  async upload(key,bytes,type){await this.cloud.upload(this.job.id,this.runnerId,key,bytes,type);return key;}
  async open(){
@@ -70,7 +70,7 @@ export class GameSession{
    const stage=s.state+'/'+s.phase;
    const revision=this.recorder.gameplayRevision?.(this.recorder.actionId)||0;
    if(stage!==publishedStage||revision!==lastRevision){lastProgress=Date.now();lastRevision=revision;}
-   if(Date.now()-lastProgress>45000)return {kind:'vision',reason:'no-round-progress-45s',continuations};
+   if(Date.now()-lastProgress>(this.job.spec.stallSeconds??45)*1000)return {kind:'vision',reason:'no-round-progress',continuations};
    if(this.page&&(Date.now()-lastPublished>10000||(publishedStage&&stage!==publishedStage))){await this.snapshot('running','executing '+stage);lastPublished=Date.now();console.log(JSON.stringify({event:'phase',game:this.game.id,state:s.state,phase:s.phase,elapsedMs:Date.now()-started}));}
    publishedStage=stage;
    if(s.phase==='active'||s.phase==='spinning'||(!['awaiting_start','result','choice','awaiting_confirmation'].includes(s.phase)&&cs.some(c=>c.category==='active'))){active=true;stable=0;lastClick=null;await sleep(300);continue;}
@@ -105,7 +105,7 @@ export class GameSession{
   return {kind:'vision',reason:'transition-timeout',continuations};
  }
  async checkStop(){
-  if(Date.now()>this.deadline)throw Error('game execution budget reached (15 minutes)');
+  if(Date.now()>this.deadline)throw Error('configured game execution budget reached');
   const {command}=await this.post('/runner/command');if(!command)return;
   if(command.kind==='snapshot'){await this.snapshot('running','live refresh');await this.post('/runner/ack',{commandId:command.commandId});return;}
   if(command.kind==='stop'){this.stopped=true;await this.post('/runner/ack',{commandId:command.commandId});throw Error('stopped by operator');}
@@ -113,7 +113,8 @@ export class GameSession{
  }
  async waitForInput(reason){
   await this.snapshot('needs_input',reason);const start=Date.now();
-  while(Date.now()-start<600000&&Date.now()<this.deadline){
+  const inputBudget=this.job.spec.inputTimeoutMinutes?this.job.spec.inputTimeoutMinutes*60000:Infinity;
+  while(Date.now()-start<inputBudget&&Date.now()<this.deadline){
    const {command}=await this.post('/runner/command');
    if(!command){await sleep(1000);continue;}
    try{
@@ -136,12 +137,12 @@ export class GameSession{
     await this.snapshot('needs_input',settled.reason);
    }catch(e){await this.post('/runner/ack',{commandId:command.commandId,error:e.message});throw e;}
   }
-  throw Error('ChatGPT input timeout (10 minutes); evidence retained');
+  throw Error('configured input wait budget reached; evidence retained');
  }
  async run(){
   try{
    await this.open();
-   for(let step=0;step<150;step++){
+   for(let step=0;step<(this.job.spec.maxSteps??Infinity);step++){
     await this.checkStop();
     const s=await this.inspectGame(this.page),a=this.planner.next(s);
     if(a.kind==='done')return {gameId:this.game.id,status:'completed',...this.planner.summary(),actions:this.actions.length};

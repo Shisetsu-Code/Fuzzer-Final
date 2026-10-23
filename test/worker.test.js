@@ -30,6 +30,13 @@ test('MCP jobs survive requests; one owner and stale observations cannot issue c
   assert.equal(JSON.parse((await call(click)).body.result.content[0].text).duplicate,true);
   const c=await req('/runner/command',{jobId:job.id,runnerId:'r1'},'runner');assert.equal(c.body.command.commandId,'click1');
   assert.equal((await req('/runner/command',{jobId:job.id,runnerId:'r1'},'runner')).body.command,null);
+  await req('/runner/ack',{jobId:job.id,runnerId:'r1',commandId:'click1'},'runner');
+  await req('/runner/heartbeat',{jobId:job.id,runnerId:'r1',observation:{...observation,capturedAt:Date.now()-20000}},'runner');
+  const oldClick=await call({...click,commandId:'too-old'});assert.equal(oldClick.body.result.isError,true);
+  const observe=await req('/mcp',{jsonrpc:'2.0',id:7,method:'tools/call',params:{name:'observe',arguments:{jobId:job.id}}});
+  assert.equal(JSON.parse(observe.body.result.content[0].text).refreshing,true);
+  const refresh=await req('/runner/command',{jobId:job.id,runnerId:'r1'},'runner');assert.equal(refresh.body.command.kind,'snapshot');
+  await req('/runner/ack',{jobId:job.id,runnerId:'r1',commandId:refresh.body.command.commandId},'runner');
   const bucket=await mf.getR2Bucket('EVIDENCE');
   await bucket.put(job.id+'/traces/action1.json',JSON.stringify({events:[{transport:'http',url:'https://demo.example/spin',request:{body:'action=doSpin'}}]}));
   const evidence=await req('/runner/action',{jobId:job.id,runnerId:'r1',action:{id:'action1',gameId:'olympus',category:'spin',label:'Spin',x:.5,y:.5,sequence:1},endpoints:[{transport:'http',method:'POST',endpoint:'https://demo.example/spin',count:1}],controls:[{id:'spin',x:.5,y:.5}]},'runner');

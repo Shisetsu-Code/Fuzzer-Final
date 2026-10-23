@@ -6,8 +6,9 @@ const rpc=async(name,args)=>{
  const body=await r.json();if(!r.ok||body.error||body.result?.isError)throw Error(JSON.stringify(body));return body.result;
 };
 await fs.mkdir('work',{recursive:true});
-if(process.argv[2]==='start'){
- const result=await rpc('run_games',{games:[{id:'gates-of-olympus',url:'https://demogamesfree.pragmaticplay.net/gs2c/openGame.do?gameSymbol=vs20olympgate&websiteUrl=https%3A%2F%2Fdemogamesfree.pragmaticplay.net&jurisdiction=99&lang=en&cur=USD'}],speed:4,normalSpins:1,anteSpins:1,buyAll:true});
+if(process.argv[2]?.startsWith('start')){
+ const bonusOnly=process.argv[2]==='start-bonus';
+ const result=await rpc('run_games',{games:[{id:'gates-of-olympus',url:'https://demogamesfree.pragmaticplay.net/gs2c/openGame.do?gameSymbol=vs20olympgate&websiteUrl=https%3A%2F%2Fdemogamesfree.pragmaticplay.net&jurisdiction=99&lang=en&cur=USD'}],speed:bonusOnly?8:4,normalSpins:bonusOnly?0:1,anteSpins:bonusOnly?0:1,buyAll:true});
  const job=JSON.parse(result.content[0].text);await fs.writeFile('work/cloud-job.json',JSON.stringify(job));console.log(JSON.stringify(job));
 }else{
  const {id}=JSON.parse(await fs.readFile('work/cloud-job.json','utf8'));

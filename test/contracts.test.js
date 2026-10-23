@@ -19,3 +19,10 @@ test('redacts credentials recursively without removing game outcomes',()=>{
   assert.deepEqual(redact({token:'secret',balance:42,nested:{authorization:'x',action:'doSpin'}}),{token:'[REDACTED]',balance:42,nested:{authorization:'[REDACTED]',action:'doSpin'}});
   assert.equal(endpointKey('https://demo.example/spin?session=abc&action=doSpin'),'https://demo.example/spin');
 });
+test('ongoing demo runs have no internal time or step cutoff unless the caller supplies one',()=>{
+ const games=[{id:'x',url:'https://demogamesfree.pragmaticplay.net/'}];
+ const defaults=validateJob({games});assert.equal(defaults.maxGameMinutes,undefined);assert.equal(defaults.maxSteps,undefined);
+ const configured=validateJob({games,maxGameMinutes:30,maxSteps:500,inputTimeoutMinutes:20,stallSeconds:90});
+ assert.equal(configured.maxGameMinutes,30);assert.equal(configured.maxSteps,500);assert.equal(configured.inputTimeoutMinutes,20);assert.equal(configured.stallSeconds,90);
+ assert.throws(()=>validateJob({games,maxGameMinutes:-1}));
+});
