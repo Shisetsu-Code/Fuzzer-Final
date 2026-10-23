@@ -14,6 +14,7 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm test
-      - run: npx playwright install --with-deps chromium
+      - name: Use preinstalled Chrome
+        run: echo "CHROME_PATH=$(command -v google-chrome)" >> "$GITHUB_ENV"
       - run: npm run test:browser
       - run: npx wrangler deploy --dry-run

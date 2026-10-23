@@ -82,7 +82,6 @@ export class GameSession{
    if(allowed.length===1){
     let c=allowed[0];const key=s.state+'|'+s.phase+'|'+c.id;
     if(lastClick===key){if(Date.now()-lastClickAt>=2000)return {kind:'vision',reason:'continuation-did-not-advance',continuations};await sleep(250);continue;}
-    if(continuations.length>=30)return {kind:'vision',reason:'continuation-limit',continuations};
     const pre=await this.page.screenshot({type:'jpeg',quality:60});const imageKey=await this.upload(this.job.id+'/images/'+id()+'.jpg',pre,'image/jpeg');
     // Purchase windows animate in: a collider read before the screenshot may be
     // at a different position by the time the click is sent. Wait for geometry.

@@ -14,7 +14,7 @@ test('real browser records HTTP bodies and binary WS frames correlated to a coor
  });
  const wss=new WebSocketServer({server});wss.on('connection',ws=>ws.on('message',data=>ws.send(data)));
  await new Promise(r=>server.listen(0,'127.0.0.1',r));
- const browser=await chromium.launch({headless:true});
+ const browser=await chromium.launch({headless:true,...(process.env.CHROME_PATH?{executablePath:process.env.CHROME_PATH}:{})});
  try{
   const page=await browser.newPage({viewport:{width:1280,height:720}});await page.addInitScript(speedInit,4);
   const recorder=new Recorder(page);await page.goto('http://127.0.0.1:'+server.address().port);
