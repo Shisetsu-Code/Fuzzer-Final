@@ -30,7 +30,14 @@ test('MCP jobs survive requests; one owner and stale observations cannot issue c
   const c=await req('/runner/command',{jobId:job.id,runnerId:'r1'},'runner');assert.equal(c.body.command.commandId,'click1');
   assert.equal((await req('/runner/command',{jobId:job.id,runnerId:'r1'},'runner')).body.command,null);
   await req('/runner/ack',{jobId:job.id,runnerId:'r1',commandId:'click1'},'runner');
-  await req('/runner/heartbeat',{jobId:job.id,runnerId:'r1',observation:{...observation,capturedAt:Date.now()-20000}},'runner');
+  // A minute spent reviewing other jobs must not invalidate a parked screen.
+  await req('/runner/heartbeat',{jobId:job.id,runnerId:'r1',observation:{...observation,capturedAt:Date.now()-60000}},'runner');
+  const parked=await req('/mcp',{jsonrpc:'2.0',id:6,method:'tools/call',params:{name:'observe',arguments:{jobId:job.id}}});
+  assert.equal(JSON.parse(parked.body.result.content[0].text).refreshing,undefined);
+  assert.equal(JSON.parse((await call({...click,commandId:'after-reasoning'})).body.result.content[0].text).accepted,true);
+  await req('/runner/command',{jobId:job.id,runnerId:'r1'},'runner');
+  await req('/runner/ack',{jobId:job.id,runnerId:'r1',commandId:'after-reasoning'},'runner');
+  await req('/runner/heartbeat',{jobId:job.id,runnerId:'r1',observation:{...observation,capturedAt:Date.now()-600000}},'runner');
   const oldClick=await call({...click,commandId:'too-old'});assert.equal(oldClick.body.result.isError,true);
   const observe=await req('/mcp',{jsonrpc:'2.0',id:7,method:'tools/call',params:{name:'observe',arguments:{jobId:job.id}}});
   assert.equal(JSON.parse(observe.body.result.content[0].text).refreshing,true);

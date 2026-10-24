@@ -70,7 +70,9 @@ async function callTool(name,args,env){
  if(name==='observe'){
   const info=publicJob(j);
   info.imageAgeMs=info.observation?.capturedAt?Date.now()-info.observation.capturedAt:null;
-  if(['needs_input','ready'].includes(j.status)&&info.imageAgeMs>5000){
+  // Allow a visual reasoning turn across multiple parked games. Refreshing every
+  // five seconds invalidated the very observation GPT was about to act on.
+  if(['needs_input','ready'].includes(j.status)&&info.imageAgeMs>120000){
    const commandId='refresh-'+info.observation.id;
    await env.DB.prepare("INSERT OR IGNORE INTO commands(job_id,id,body,created) SELECT ?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM commands WHERE job_id=? AND status IN ('queued','running'))").bind(j.id,commandId,JSON.stringify({kind:'snapshot',commandId}),Date.now(),j.id).run();info.refreshing=true;info.next='Call observe again for the refreshed image before clicking.';
   }
@@ -86,7 +88,7 @@ async function callTool(name,args,env){
   if(parse(j.spec)?.prepareOnly&&!j.operation_started&&!['resume','stop'].includes(a.kind))throw Error('Prepared session: use act kind=resume to start operations in this browser first');
   if(a.kind==='resume'&&j.status==='preparing')throw Error('Demo still preparing; wait for ready before activation');
   const obs=parse(j.observation);
-  if(a.kind==='click'&&(obs?.id!==a.observationId||obs?.status!=='needs_input'||Date.now()-(obs.capturedAt||0)>15000))throw Error('stale observation or game still running; call observe to refresh');
+  if(a.kind==='click'&&(obs?.id!==a.observationId||obs?.status!=='needs_input'||Date.now()-(obs.capturedAt||0)>300000))throw Error('stale observation or game still running; call observe to refresh');
   const result=await env.DB.prepare(`INSERT INTO commands(job_id,id,body,created) SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM jobs WHERE id=? AND status IN ('running','needs_input','ready','preparing') AND (? IS NULL OR json_extract(observation,'$.id')=?))`).bind(j.id,a.commandId,JSON.stringify(a),Date.now(),j.id,a.kind==='click'?a.observationId:null,a.observationId??null).run();
   if(!result.meta.changes)throw Error('observation changed');return textResult({accepted:true,commandId:a.commandId,next:'observe'});
  }
