@@ -11,6 +11,8 @@ Plan (native execution, user already delegated implementation details):
 - [x] Session tests first: intro-only preparation, explicit activation, same-context execution; implement preparation and readiness checks.
 - [x] Pool tests first: two queued sessions can prepare while the first waits; implement runner presence and independent slots.
 - [x] Real-browser fixture verifies no gameplay request during preparation and reuse of the same page on activation.
-- [ ] Run full suite and CI, provision migration, deploy, start Actions, and verify a real ready demo before handing a job to a chat.
+- [x] Run full suite and CI, provision migration, deploy, start Actions, and verify a real ready demo before handing a job to a chat.
+
+Live verification (2026-10-23): CI 40042767454 passed; Actions service 40042846658 prepared Gates of Olympus as job `3296dcc9-dde9-4ece-a628-180fe052d7d4`. Before chat activation it was `ready`, operation_started was null, and evidence contained one load and one intro continuation with zero spins. Final 2 activated that same job, which completed one normal spin with no error. Final evidence contained exactly one load, one intro continuation and one spin, confirming activation reused the prepared page. Worker deployment: `312188f6-013f-453a-88c4-a7b83b4c66c7`. Validation also passed 27 unit/runtime tests and two real Chromium tests.
 
 Review focus: no duplicate prepared jobs on tool retries; no context loss at activation; no false ready from promotional/unknown UI; parked sessions keep heartbeats; separate job snapshots/commands across slots; runner shutdown removes presence; activation never silently repeats operations.
