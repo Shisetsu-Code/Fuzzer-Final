@@ -7,6 +7,36 @@ import {Recorder} from '../runner/recorder.js';
 import {inspect} from '../runner/adapter.js';
 import {speedInit} from '../runner/speed.js';
 import {GameSession} from '../runner/session.js';
+import {foregroundArgs,keepPageActive} from '../runner/foreground.js';
+
+test('four games retain focus, visibility and advancing frames while another page is foregrounded',async()=>{
+ const browser=await chromium.launch({headless:true,...(process.env.CHROME_PATH?{executablePath:process.env.CHROME_PATH}:{}),args:foregroundArgs});
+ try{
+  const pages=[];
+  const fixture=`<script>window.ticks=0;window.timers=0;setInterval(()=>{if(document.hasFocus()&&!document.hidden)timers++;},50);function step(){if(document.hasFocus()&&!document.hidden)ticks++;requestAnimationFrame(step);}requestAnimationFrame(step);</script>`;
+  for(let i=0;i<4;i++){
+   const context=await browser.newContext();const page=await context.newPage();
+   await keepPageActive(context,page);
+   await page.setContent(fixture+'<iframe></iframe>');
+   await page.frames()[1].setContent(fixture);
+   pages.push(page);
+  }
+  for(const foreground of pages){
+   await foreground.bringToFront();
+   const before=await Promise.all(pages.flatMap(p=>p.frames()).map(f=>f.evaluate(()=>({ticks,timers}))));
+   await new Promise(resolve=>setTimeout(resolve,400));
+   const frames=pages.flatMap(p=>p.frames());
+   for(let i=0;i<frames.length;i++){
+    const now=await frames[i].evaluate(()=>({focus:document.hasFocus(),visible:document.visibilityState,ticks,timers}));
+    assert.equal(now.focus,true);assert.equal(now.visible,'visible');
+    assert.ok(now.ticks>before[i].ticks,'background animation must advance');
+    assert.ok(now.timers>before[i].timers,'background game timer must advance');
+   }
+  }
+  await pages[0].reload();
+  assert.equal(await pages[0].evaluate(()=>document.hasFocus()),true);
+ }finally{await browser.close();}
+});
 
 test('real browser records HTTP bodies and binary WS frames correlated to a coordinate click',async()=>{
  const server=http.createServer(async(req,res)=>{

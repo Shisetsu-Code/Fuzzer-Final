@@ -5,6 +5,7 @@ import {speedInit} from './speed.js';
 import {SuitePlanner} from './planner.js';
 import {sleep} from './client.js';
 import {ProgressWatchdog} from './progress.js';
+import {keepPageActive} from './foreground.js';
 const id=()=>randomUUID();
 export class GameSession{
  constructor({browser,cloud,job,runnerId,game,inspectGame=inspect,signal,assertHealthy=()=>{}}){Object.assign(this,{browser,cloud,job,runnerId,game,inspectGame,signal,assertHealthy});this.planner=new SuitePlanner(job.spec);this.sequence=0;this.actions=[];this.stopped=false;this.lastObservation=null;this.pendingPurpose=null;this.deadline=!job.spec.prepareOnly&&job.spec.maxGameMinutes?Date.now()+job.spec.maxGameMinutes*60000:Infinity;this.preparationComplete=false;this.operationStarted=false;}
@@ -20,6 +21,7 @@ export class GameSession{
    return route.continue();
   });
   this.page=await this.context.newPage();this.page.setDefaultTimeout(4000);this.page.setDefaultNavigationTimeout(45000);
+  this.focusClient=await keepPageActive(this.context,this.page);
   this.recorder=new Recorder(this.page);const loadId=id();this.recorder.actionId=loadId;await this.page.goto(this.game.url,{waitUntil:'domcontentloaded'});
   // The operator explicitly confirms adult status; no account credentials are used.
   await this.dismissPageOverlays();
