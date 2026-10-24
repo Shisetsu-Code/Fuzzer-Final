@@ -6,6 +6,7 @@ import {chromium} from 'playwright';
 import {Recorder} from '../runner/recorder.js';
 import {inspect} from '../runner/adapter.js';
 import {speedInit} from '../runner/speed.js';
+import {GameSession} from '../runner/session.js';
 
 test('real browser records HTTP bodies and binary WS frames correlated to a coordinate click',async()=>{
  const server=http.createServer(async(req,res)=>{
@@ -29,4 +30,28 @@ test('real browser records HTTP bodies and binary WS frames correlated to a coor
   assert.equal(trace.events.find(e=>e.transport==='ws'&&e.direction==='sent').payload.data,'AP8B');
   assert.equal(trace.complete,true);
  }finally{await browser.close();for(const ws of wss.clients)ws.terminate();await new Promise(r=>wss.close(r));await new Promise(r=>server.close(r));}
+});
+
+test('real browser preloads intro without a wager, then starts in the same page',async()=>{
+ let loads=0,spins=0;
+ const server=http.createServer(async(req,res)=>{
+  if(req.url==='/spin'){spins++;for await(const c of req)void c;res.setHeader('content-type','application/json');res.end('{"win":0}');return;}
+  if(req.url==='/favicon.ico'){res.writeHead(204).end();return;}
+  loads++;res.setHeader('content-type','text/html');res.end(`<body data-state="INTRO" data-phase="unknown"><button id="intro">Continue</button><button id="spin" hidden>Spin</button><script>intro.onclick=()=>{intro.hidden=true;spin.hidden=false;document.body.dataset.state='BASE';document.body.dataset.phase='idle';};spin.onclick=async()=>{document.body.dataset.phase='spinning';await fetch('/spin',{method:'POST',body:'action=doSpin'});document.body.dataset.phase='idle';};</script>`);
+ });
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));let browser,session;
+ try{
+  browser=await chromium.launch({headless:true,...(process.env.CHROME_PATH?{executablePath:process.env.CHROME_PATH}:{})});
+  let activate=false,sent=false;const records=[],uploads=new Map();
+  const cloud={async post(path,body){if(path==='/runner/command'){if(activate&&!sent){sent=true;return {command:{kind:'resume',commandId:'activate'}};}return {command:null};}if(path==='/runner/action')records.push(body.action);return {ok:true};},async upload(job,owner,key,bytes){uploads.set(key,bytes);}};
+  const inspectGame=async page=>{const s=await inspect(page),phase=await page.locator('body').evaluate(b=>({state:b.dataset.state,phase:b.dataset.phase}));return {...s,...phase};};
+  session=new GameSession({browser,cloud,runnerId:'test',job:{id:'prepared-test',spec:{prepareOnly:true,speed:4,normalSpins:1,anteSpins:0,buyAll:false}},game:{id:'fixture',url:'http://127.0.0.1:'+server.address().port},inspectGame});
+  assert.equal((await session.prepare()).ready,true);assert.equal(spins,0);assert.equal(loads,1);
+  assert.equal(session.lastObservation.status,'ready');assert.ok(uploads.has(session.lastObservation.imageKey));
+  const loadedPage=session.page;
+  activate=true;assert.equal(await session.waitPrepared(),'start');
+  assert.equal((await session.run()).normalSpins,1);
+  assert.equal(session.page,loadedPage);assert.equal(loads,1);assert.equal(spins,1);
+  assert.equal(records.filter(r=>r.category==='spin').length,1);
+ }finally{await session?.close();await browser?.close();await new Promise(r=>server.close(r));}
 });

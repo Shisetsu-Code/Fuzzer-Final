@@ -9,8 +9,7 @@ test('MCP jobs survive requests; one owner and stale observations cannot issue c
  const mf=new Miniflare(convertV4MiniflareOptions({modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-23',d1Databases:['DB'],r2Buckets:['EVIDENCE'],bindings:{ACCESS_TOKEN:'client',RUNNER_TOKEN:'runner'}}));
  try{
   const db=await mf.getD1Database('DB');
-  const sql=await fs.readFile('migrations/0001.sql','utf8');
-  for(const statement of sql.split(';').filter(x=>x.trim()))await db.prepare(statement).run();
+  for(const file of (await fs.readdir('migrations')).sort())for(const statement of (await fs.readFile('migrations/'+file,'utf8')).split(';').filter(x=>x.trim()))await db.prepare(statement).run();
   const req=async(path,body,token='client')=>{const r=await mf.dispatchFetch('https://worker.test'+path,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify(body)});return {status:r.status,body:await r.json()};};
   assert.equal((await req('/mcp',{id:1,method:'tools/list'},'wrong')).status,401);
   const init=await req('/mcp',{jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25'}});
