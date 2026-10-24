@@ -1,0 +1,37 @@
+name: Additional demo runner
+on:
+  workflow_dispatch:
+    inputs:
+      lane:
+        description: Independent runner lane
+        required: true
+        type: choice
+        options: ['3', '4']
+permissions:
+  contents: read
+concurrency:
+  group: demo-runner-extra-${{ inputs.lane }}
+  cancel-in-progress: false
+jobs:
+  run:
+    if: vars.FUZZER_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      FUZZER_URL: ${{ vars.FUZZER_URL }}
+      FUZZER_RUNNER_TOKEN: ${{ secrets.FUZZER_RUNNER_TOKEN }}
+      PRELOAD_SLOTS: '4'
+      RUNNER_IDLE_MINUTES: '10'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Use preinstalled Chrome
+        run: echo "CHROME_PATH=$(command -v google-chrome)" >> "$GITHUB_ENV"
+      - run: npm run runner
+      - name: Report
+        if: always()
+        run: echo 'Evidence remains private in Cloudflare R2/D1.' >> "$GITHUB_STEP_SUMMARY"
