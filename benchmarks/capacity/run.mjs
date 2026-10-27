@@ -11,7 +11,7 @@ const specs=[
  {name:'Wild Tiger 2',provider:'bgaming',url:'https://demo.bgaming-network.com/play/WildTiger2/FUN?server=demo',intro:[.495,.895],spin:[.883,.945]},
  {name:'3 Lucky Monkeys',provider:'bgaming',url:'https://demo.bgaming-network.com/play/ThreeLuckyMonkeysHoldAndWin/FUN?server=demo',intro:[.5,.94],spin:[.883,.945]}
 ];
-const report={hardware:{cpus:os.cpus().length,cpu:os.cpus()[0]?.model,ramBytes:os.totalmem()},scope:'Bounded CI browser/Recorder benchmark, not the unpublished local MCP transport. Public fictitious-credit demos only. No model API. Two spins six seconds apart per stage; not an endurance/bonus test.',privacy:'Only screenshots, numeric protocol summaries and resource metrics are exported. Raw payloads/session URLs/headers remain ephemeral in runner memory.',profiles:[]};
+const report={hardware:{cpus:os.cpus().length,cpu:os.cpus()[0]?.model,ramBytes:os.totalmem()},scope:'Bounded CI browser/Recorder benchmark, not the unpublished local MCP transport. Public fictitious-credit demos only. No model API. Two spins twenty seconds apart per stage; not an endurance/bonus test.',frameCapScope:'window.requestAnimationFrame callbacks only; clocks and timers remain native. CSS or worker animations may not follow this cap.',privacy:'Only screenshots, numeric protocol summaries and resource metrics are exported. Raw payloads/session URLs/headers remain ephemeral in runner memory.',profiles:[]};
 let cursor=0;
 class Session{
  constructor(context,page,spec,slot){this.context=context;this.page=page;this.spec=spec;this.slot=slot;this.recorder=new Recorder(page,{maxBytes:80000000,maxEvents:15000});this.lastBalance=null;}
@@ -35,7 +35,7 @@ class Session{
    if(request){acknowledgement=request.at-start;break;}await sleep(100);
   }
   if(acknowledgement===null)return {ok:false,reason:'no_spin_request_observed',ackMs:null};
-  await sleep(Math.max(0,6000-(Date.now()-start)));
+  await sleep(Math.max(0,20000-(Date.now()-start)));
   const trace=await this.recorder.snapshot(id),money=values(trace.events);
   const consistent=money&&Number.isFinite(money.cost)&&Number.isFinite(money.win)&&Number.isFinite(money.balance)&&(this.lastBalance===null||this.lastBalance-money.cost+money.win===money.balance);
   if(money?.balance!==undefined)this.lastBalance=money.balance;
@@ -45,8 +45,9 @@ class Session{
  async close(){await this.context.close();}
 }
 async function profile(fps){
+ cursor=0;
  const result={fps,startedAt:Date.now(),stages:[],loadFailures:[]},sessions=[];report.profiles.push(result);
- const browser=await chromium.launch({executablePath:process.env.CHROME_PATH||undefined,headless:true,args:['--use-gl=angle','--use-angle=swiftshader','--mute-audio','--disable-background-timer-throttling','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']});
+ const browser=await chromium.launch({executablePath:process.env.CHROME_PATH||undefined,headless:true,args:['--use-gl=angle','--use-angle=swiftshader-webgl','--enable-unsafe-swiftshader','--mute-audio','--disable-background-timer-throttling','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']});
  try{
   const client=await browser.newBrowserCDPSession();const info=await client.send('SystemInfo.getInfo');result.renderer=info.gpu.auxAttributes?.glRenderer;await client.detach();
   for(const count of [1,2,4,6,8]){
@@ -74,6 +75,7 @@ async function profile(fps){
    for(const session of sessions){
     try{stage.screenshots.push(await session.capture(`stage${count}`));}catch(error){stage.screenshots.push({slot:session.slot,error:error.name});}
    }
+   stage.capObservations=await Promise.all(sessions.map(s=>s.page.evaluate(()=>globalThis.__capacityFrameCap?{...globalThis.__capacityFrameCap,observedAt:performance.now()}:null).catch(()=>null)));
    stage.finishedAt=Date.now();stage.functional=stage.rounds.every(round=>round.every(spin=>spin.ok));
    console.log(JSON.stringify({fps,sessions:count,event:'measured',functional:stage.functional,okSpins:stage.rounds.flat().filter(x=>x.ok).length,expectedSpins:count*2}));
    await save('summary.json',report);
@@ -82,5 +84,5 @@ async function profile(fps){
   }
  }finally{await browser.close();result.finishedAt=Date.now();await save('summary.json',report);}
 }
-try{for(const fps of [0,30,15])await profile(fps);}
+try{for(const fps of (process.env.BENCH_FPS===undefined?[0,30,15]:[Number(process.env.BENCH_FPS)]))await profile(fps);}
 finally{report.finishedAt=Date.now();await save('summary.json',report);}
