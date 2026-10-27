@@ -1,0 +1,90 @@
+{
+  "source": "Tester Spin read-only catalog",
+  "catalogGames": 6753,
+  "providers": {
+    "1spin4win": [
+      "gs.1spin4win.com:10443"
+    ],
+    "3oaks": [
+      "3oaks.com"
+    ],
+    "amusnet": [
+      "amusnetgaming.com",
+      "demo.amusnet.com"
+    ],
+    "belatra": [
+      "belatragames.com",
+      "free-slot.belatragames.com"
+    ],
+    "bgaming": [
+      "bgaming-network.com",
+      "bgaming.com",
+      "demo.bgaming-network.com"
+    ],
+    "blueprint": [
+      "blueprintgaming.com"
+    ],
+    "elk": [
+      "www.elk-studios.com"
+    ],
+    "games_global": [
+      "www.gamesglobal.com"
+    ],
+    "greentube": [
+      "www.greentube.com"
+    ],
+    "hacksaw": [
+      "static-live.hacksawgaming.com",
+      "www.hacksawgaming.com"
+    ],
+    "ka_gaming": [
+      "gamesdemo.kaga88.com"
+    ],
+    "netent": [
+      "netent.com"
+    ],
+    "nolimit_city": [
+      "demo.nolimitcity.com",
+      "nolimitcity.com",
+      "playin.com"
+    ],
+    "pgsoft": [
+      "www.pgsoft.com"
+    ],
+    "playngo": [
+      "released.playngonetwork.com",
+      "www.playngo.com"
+    ],
+    "playson": [
+      "m.playson.com",
+      "playson.com"
+    ],
+    "playtech": [
+      "cachedownload.playtechone.com",
+      "www.playtechone.com"
+    ],
+    "pragmatic": [
+      "demogamesfree.pragmaticplay.net",
+      "www.pragmaticplay.com",
+      "www.pragmaticplay.fun"
+    ],
+    "pushgaming": [
+      "www.pushgaming.com"
+    ],
+    "redtiger": [
+      "games.evolution.com"
+    ],
+    "relax": [
+      "www.relax-gaming.com"
+    ],
+    "rubyplay": [
+      "rubyplay.com"
+    ],
+    "wazdan": [
+      "wazdan.com"
+    ],
+    "yggdrasil": [
+      "yggdrasilgaming.com"
+    ]
+  }
+}

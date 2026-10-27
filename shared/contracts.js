@@ -1,7 +1,8 @@
-export const DEMO_HOSTS=['demogamesfree.pragmaticplay.net','www.pragmaticplay.com','www.pragmaticplay.fun'];
+import registry from './demo-providers.json' with {type:'json'};
+export const DEMO_HOSTS=[...new Set(Object.values(registry.providers).flat())];
 export function demoUrl(value,hosts=DEMO_HOSTS){
  const u=new URL(value);
- if(u.protocol!=='https:'||u.username||u.password||u.port||!hosts.includes(u.hostname))throw Error('unapproved public DEMO URL');
+ if(u.protocol!=='https:'||u.username||u.password||!hosts.includes(u.host))throw Error('unapproved public DEMO URL');
  if(u.hostname==='www.pragmaticplay.com'&&!/^\/en\/games\/[a-z0-9-]+\/$/.test(u.pathname))throw Error('expected demo detail page');
  if(u.hostname==='www.pragmaticplay.fun'&&!/^\/en\/slots\/[a-z0-9-]+\/$/.test(u.pathname))throw Error('expected demo page');
  return u.href;

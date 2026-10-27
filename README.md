@@ -45,7 +45,7 @@ Motor de animación 1x/2x/4x/8x instalado antes de cargar el juego. Acelera time
 
 No hay corte interno predeterminado por minutos, número de pasos o espera de ChatGPT. Si se desean, `run_games` y `prepare_games` admiten `maxGameMinutes`, `maxSteps` e `inputTimeoutMinutes` explícitos. Un runner totalmente ocioso espera diez minutos (`RUNNER_IDLE_MINUTES`; 0 lo mantiene conectado); una sesión preparada o activa no se cierra por ese tiempo de inactividad. El workflow conserva su límite externo de GitHub Actions de 6 horas; si lo alcanza, la tarea queda interrumpida, nunca completa por haber vencido el tiempo.
 
-Hosts iniciales: demos oficiales de Pragmatic. Otros proveedores requieren agregar sus hosts demo exactos a `DEMO_HOSTS` del Worker. No usar cuentas, cookies importadas, URLs de caja o casinos con dinero real.
+El registro `shared/demo-providers.json` admite los 24 proveedores y las 6.753 URLs del catálogo de Tester Spin, además de los lanzadores demo conocidos. La admisión del proveedor no certifica la detección de controles ni la cobertura de apuestas: los lienzos desconocidos requieren observe/act. Los destinos se validan por host y puerto exactos (incluido 1spin4win:10443). Otros lanzadores demo requieren agregar su origen al registro o a `DEMO_HOSTS` del Worker. No usar cuentas, cookies importadas, URLs de caja o casinos con dinero real.
 
 ## Desarrollo y despliegue
 
