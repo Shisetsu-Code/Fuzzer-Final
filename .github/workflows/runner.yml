@@ -5,6 +5,7 @@ on:
     - cron: '*/5 * * * *'
 permissions:
   contents: read
+  checks: write
 concurrency:
   group: demo-runner
   cancel-in-progress: false
@@ -12,12 +13,12 @@ jobs:
   run:
     if: vars.FUZZER_URL != ''
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 45
     env:
       FUZZER_URL: ${{ vars.FUZZER_URL }}
       FUZZER_RUNNER_TOKEN: ${{ secrets.FUZZER_RUNNER_TOKEN }}
-      PRELOAD_SLOTS: ${{ vars.PRELOAD_SLOTS || '2' }}
-      RUNNER_IDLE_MINUTES: ${{ vars.RUNNER_IDLE_MINUTES || '10' }}
+      PRELOAD_SLOTS: '8'
+      RUNNER_IDLE_MINUTES: '10'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,7 +28,17 @@ jobs:
       - run: npm ci
       - name: Use preinstalled Chrome
         run: echo "CHROME_PATH=$(command -v google-chrome)" >> "$GITHUB_ENV"
-      - run: npm run runner
+      - run: python -m pip install psutil
+      - name: Run the MCP browser worker with normal browser settings
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          node runner/main.mjs &
+          MCP_RUNNER_PID=$!
+          python runner/resource-status.py "$MCP_RUNNER_PID" &
+          METRICS_PID=$!
+          wait "$MCP_RUNNER_PID"
+          wait "$METRICS_PID"
       # Evidence is private in R2. Never upload session payloads to public Actions artifacts.
       - name: Report
         if: always()

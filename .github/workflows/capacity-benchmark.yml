@@ -1,8 +1,5 @@
 name: Browser capacity benchmark
 on:
-  push:
-    branches: [codex/actions-capacity-20261027]
-    paths: ['benchmarks/capacity/**', '.github/workflows/capacity-benchmark.yml']
   workflow_dispatch:
 permissions:
   contents: read
