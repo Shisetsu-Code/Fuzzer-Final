@@ -1,0 +1,45 @@
+name: Browser capacity benchmark
+on:
+  push:
+    branches: [codex/actions-capacity-20261027]
+    paths: ['benchmarks/capacity/**', '.github/workflows/capacity-benchmark.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: browser-capacity-benchmark
+  cancel-in-progress: false
+jobs:
+  benchmark:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: python -m pip install psutil
+      - run: node --test benchmarks/capacity/*.test.mjs
+      - name: Test browser capacity without hardware GPU
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+        run: |
+          node benchmarks/capacity/run.mjs &
+          CAPACITY_PID=$!
+          python benchmarks/capacity/sample.py "$CAPACITY_PID" &
+          SAMPLER_PID=$!
+          wait "$CAPACITY_PID"
+          wait "$SAMPLER_PID"
+      - name: Upload sanitized measurements and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-capacity-results
+          path: capacity-results/
+          retention-days: 3
+      - name: Summary
+        if: always()
+        run: |
+          echo 'Bounded benchmark: 1/2/4/6/8 desktop sessions, uncapped/30/15 FPS, CPU rendering. Raw session payloads are not uploaded.' >> "$GITHUB_STEP_SUMMARY"
